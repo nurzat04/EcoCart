@@ -11,29 +11,27 @@ class Supplier(models.Model):
 
     def __str__(self):
         return self.user.username
+   
+class Category(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+    display_name = models.CharField(max_length=100)
+
+    def __str__(self):
+        return self.display_name
 
 class Product(models.Model):
-    CATEGORY_CHOICES = [
-        ('vegetables', 'Vegetables'),
-        ('fruit', 'Fruit'),
-        ('juice', 'Juice'),
-        ('dairy', 'Dairy'),
-        ('bread_eggs', 'Bread and Eggs'),
-        ('meat', 'Meat'),
-        ('sauces', 'Sauces'),
-        ('seafood', 'Seafood'),
-        ('junkfood', 'Junk Food'),
-    ]
-
     name = models.CharField(max_length=255)
     # price = models.DecimalField(max_digits=10, decimal_places=2)
     description = models.TextField(blank=True)
-    category = models.CharField(max_length=50, choices=CATEGORY_CHOICES)
+    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, related_name='products')
     supplier = models.ManyToManyField(Supplier, through='ProductSupplier')
-
+    image = models.ImageField(upload_to='products/', null=True, blank=True)  
+    
     def __str__(self):
         return self.name
-
+    
+    def get_discount(self):
+        return Discount.objects.filter(product=self).first()
 
 
 class ProductSupplier(models.Model):
@@ -51,15 +49,15 @@ class ProductSupplier(models.Model):
 
 
 class Discount(models.Model):
-    supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE)
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
-    discount_type = models.CharField(max_length=50, choices=[('percentage', 'Percentage'), ('fixed', 'Fixed')])  # 折扣类型
-    discount_value = models.DecimalField(max_digits=5, decimal_places=2)  # 折扣值
+    type = models.CharField(max_length=50, choices=[('percentage', 'Percentage'), ('fixed', 'Fixed')])  # 折扣类型
+    value = models.DecimalField(max_digits=5, decimal_places=2, default=0)  # 折扣值
     valid_from = models.DateTimeField()  # 开始时间
     valid_until = models.DateTimeField()  # 结束时间
+    supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name="discounts")
 
     def __str__(self):
-        return f'{self.product.name} - {self.discount_value} off'
+        return f'{self.product.name} - {self.value} off'
 
 
 class ShoppingList(models.Model):
@@ -82,7 +80,8 @@ class ShoppingItem(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     expiration_date = models.DateField(null=True, blank=True)  # 过期日期字段
     reminder_sent = models.BooleanField(default=False)  # 是否已发送过期提醒
-
+    total_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    
     def __str__(self):
         return self.product.name
         
@@ -92,4 +91,16 @@ class ShoppingItem(models.Model):
             return True
         return False
     
+    def send_expiration_reminder(self):
+        """ 发送过期提醒通知 """
+        if not self.reminder_sent:
+            # 在这里，你可以添加发提醒消息的逻辑，比如使用 WebSocket 或者其他方式
+            self.reminder_sent = True
+            self.save()
+            
+    def add_to_fridge(self):
+        """ 当用户标记为已购买时，添加到冰箱并设置过期日期 """
+        self.is_checked = True
+        self.expiration_date = datetime.date.today() + timedelta(days=7)  # 例如，设置7天后的过期日期
+        self.save()
 

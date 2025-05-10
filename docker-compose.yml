@@ -12,3 +12,9 @@ services:
 
 volumes:
   redis_data:
+
+web:
+  build: .
+  command: daphne EcoCart.asgi:application
+  ports:
+    - "8000:8000"

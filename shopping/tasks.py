@@ -1,12 +1,12 @@
+from channels.layers import get_channel_layer
 from celery import shared_task
-from django.core.mail import send_mail
-from datetime import datetime, timedelta
+from django.utils import timezone
+from datetime import timedelta
 from .models import ShoppingItem
-from django.contrib.auth.models import User
 
 @shared_task
 def check_expiring_products():
-    today = datetime.today().date()
+    today = timezone.now().date()
     soon_expiry_date = today + timedelta(days=3)
 
     # 查找即将过期的商品
@@ -17,14 +17,17 @@ def check_expiring_products():
     )
 
     for item in expiring_items:
-        user = item.list.owner
-        # 发送提醒邮件（根据你的需求，可以改为推送通知等）
-        send_mail(
-            'Your product is about to expire!',
-            f'The product "{item.product.name}" will expire on {item.expiration_date}.',
-            None,  # 使用默认邮箱
-            [user.email],
-            fail_silently=False,
+        # 获取用户的 WebSocket 群组名
+        group_name = f"user_{item.list.owner.id}"
+
+        # 推送通知到 WebSocket 客户端
+        channel_layer = get_channel_layer()
+        channel_layer.group_send(
+            group_name,  # 群组名
+            {
+                'type': 'send_notification',
+                'message': f'Your product "{item.product.name}" will expire on {item.expiration_date}.'
+            }
         )
 
         item.reminder_sent = True
